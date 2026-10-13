@@ -14,6 +14,25 @@ try {
     }
     Apply-Choices @{} -Restore | Out-Null
     foreach ($feature in $script:Features) { Assert (-not (Read-Policy $feature.Policy).Exists) 'Restore absent value' }
+    # Returning to an absent original through Default must end tracking on Restore.
+    Apply-Choices @{BraveAIChatEnabled='Off'} | Out-Null
+    Apply-Choices @{BraveAIChatEnabled='Default'} | Out-Null
+    $snapshotsBefore = @(Get-ChildItem -LiteralPath $script:BackupDirectory -Filter 'before-*.json').Count
+    Apply-Choices @{} -Restore | Out-Null
+    Assert (@((Load-Journal).Entries).Count -eq 0) 'No-op restore clears absent original tracking'
+    Assert (-not (Read-Policy 'BraveAIChatEnabled').Exists) 'No-op restore preserves absent original'
+    Assert (@(Get-ChildItem -LiteralPath $script:BackupDirectory -Filter 'before-*.json').Count -eq $snapshotsBefore) 'No-op restore needs no policy snapshot'
+    # A later externally set value is a fresh original, not a stale conflict.
+    Write-Policy 'BraveAIChatEnabled' ([pscustomobject]@{Exists=$true; Kind='DWord'; Value=1})
+    Apply-Choices @{BraveAIChatEnabled='Off'} | Out-Null
+    Apply-Choices @{BraveAIChatEnabled='On'} | Out-Null
+    Apply-Choices @{} -Restore | Out-Null
+    Assert (@((Load-Journal).Entries).Count -eq 0) 'No-op restore clears pre-existing original tracking'
+    Assert ((Read-Policy 'BraveAIChatEnabled').Value -eq 1) 'No-op restore preserves pre-existing original'
+    Write-Policy 'BraveAIChatEnabled' ([pscustomobject]@{Exists=$true; Kind='DWord'; Value=0})
+    Apply-Choices @{BraveAIChatEnabled='On'} | Out-Null
+    Apply-Choices @{} -Restore | Out-Null
+    Assert ((Read-Policy 'BraveAIChatEnabled').Value -eq 0) 'Fresh apply captures new original after no-op restore'
     Write-Policy 'BraveAIChatEnabled' ([pscustomobject]@{Exists=$true; Kind='DWord'; Value=1})
     Apply-Choices @{BraveAIChatEnabled='Off'} | Out-Null
     Apply-Choices @{BraveAIChatEnabled='Default'} | Out-Null
@@ -26,6 +45,10 @@ try {
     try { Apply-Choices @{BraveAIChatEnabled='Default'; BraveRewardsDisabled='Off'} | Out-Null } catch { $blocked = $_.Exception.Message -like '*outside this tool*' }
     Assert $blocked 'Detect external change'
     Assert (-not (Read-Policy 'BraveRewardsDisabled').Exists) 'Conflict preflight prevents partial writes'
+    $blocked = $false
+    try { Apply-Choices @{} -Restore | Out-Null } catch { $blocked = $_.Exception.Message -like '*outside this tool*' }
+    Assert $blocked 'Restore still detects external change'
+    Assert (@((Load-Journal).Entries).Count -eq 1) 'Conflicting restore preserves journal'
     Write-Policy 'BraveAIChatEnabled' ([pscustomobject]@{Exists=$true; Kind='DWord'; Value=0})
     Apply-Choices @{} -Restore | Out-Null
     $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($script:PolicySubKey, $true)
@@ -53,7 +76,7 @@ try {
     Assert $blocked 'Protected registry preflight'
     Assert (-not (Read-Policy 'BraveRewardsDisabled').Exists) 'Permission denial preserves policies'
     Assert (@((Load-Journal).Entries).Count -eq 0) 'Permission denial preserves restore journal'
-    Write-Output 'PASS: 15 on/off mappings, defaults, restore, conflicts, unrelated values, rollback, and protected-key preflight.'
+    Write-Output 'PASS: 15 on/off mappings, defaults, restore (including no-op journal cleanup), conflicts, unrelated values, rollback, and protected-key preflight.'
 } finally {
     if ($script:PolicySubKey -notlike 'Software\CodexBraveFeatureControlTest\*') { throw 'Unsafe test cleanup path' }
     [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($script:PolicySubKey, $false)

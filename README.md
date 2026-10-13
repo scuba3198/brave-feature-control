@@ -8,6 +8,8 @@ Download the ZIP from [Releases](https://github.com/scuba3198/brave-feature-cont
 
 Version 2 uses a redesigned native Windows panel with grouped feature cards, segmented Default/On/Off controls, a pending-change counter, and a highlighted Apply button. It uses Windows' built-in WPF libraries.
 
+Version 2.0.1 fixes **Restore original** when all tracked policies already match their original values. Restore now clears the completed journal so later changes can be applied without a stale external-change conflict. Existing backups remain compatible.
+
 Keep `Open-Brave-Feature-Control.cmd` and `Brave-Feature-Control.ps1` together. Double-click the `.cmd` file to open the panel. No installation is required. If Windows protects the Brave policy registry key, the script requests administrator access through a Windows UAC prompt before opening the panel. Use the same Windows account; elevation to a different account is refused to avoid changing the wrong user's policies. The launcher uses a process-only execution policy bypass; it does not change Windows execution policy.
 
 1. Choose **Minimal preset** to stage all optional features Off, or change individual choices.

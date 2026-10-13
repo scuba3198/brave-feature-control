@@ -140,7 +140,14 @@ function Apply-Choices($Choices, [switch]$Restore) {
                 } else { $entry.Last = $after }
             }
         }
-        if ($changes.Count -eq 0) { return 'No changes needed.' }
+        if ($changes.Count -eq 0) {
+            # All tracked values were validated above, even when already original.
+            if ($Restore -and @($journal.Entries).Count -gt 0) {
+                $journal.Entries = @()
+                Save-Journal $journal
+            }
+            return 'No changes needed.'
+        }
         if (-not (Test-PolicyWriteAccess)) {
             throw 'Windows protects this policy key. Close this panel and reopen the updated launcher to request administrator access. No policies changed.'
         }
